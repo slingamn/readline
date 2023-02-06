@@ -19,12 +19,16 @@ package readline
 
 import (
 	"io"
+	"sync"
 )
 
 type Instance struct {
 	Config    *Config
 	Terminal  *Terminal
 	Operation *Operation
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 type Config struct {
@@ -56,7 +60,7 @@ type Config struct {
 
 	FuncGetWidth func() int
 
-	Stdin       io.ReadCloser
+	Stdin       io.Reader
 	StdinWriter io.Writer
 	Stdout      io.Writer
 	Stderr      io.Writer
@@ -98,10 +102,11 @@ func (c *Config) Init() error {
 	}
 	c.inited = true
 	if c.Stdin == nil {
-		c.Stdin = NewCancelableStdin(Stdin)
+		c.Stdin = Stdin
 	}
 
-	c.Stdin, c.StdinWriter = NewFillableStdin(c.Stdin)
+	fillableStdin := NewFillableStdin(c.Stdin)
+	c.Stdin, c.StdinWriter = fillableStdin, fillableStdin
 
 	if c.Stdout == nil {
 		c.Stdout = Stdout
@@ -275,12 +280,11 @@ func (i *Instance) ReadSlice() ([]byte, error) {
 // if there has a pending reading operation, that reading will be interrupted.
 // so you can capture the signal and call Instance.Close(), it's thread-safe.
 func (i *Instance) Close() error {
-	i.Config.Stdin.Close()
-	i.Operation.Close()
-	if err := i.Terminal.Close(); err != nil {
-		return err
-	}
-	return nil
+	i.closeOnce.Do(func() {
+		i.Operation.Close()
+		i.closeErr = i.Terminal.Close()
+	})
+	return i.closeErr
 }
 
 // call CaptureExitSignal when you want readline exit gracefully.
