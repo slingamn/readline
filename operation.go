@@ -48,10 +48,6 @@ type wrapWriter struct {
 }
 
 func (w *wrapWriter) Write(b []byte) (int, error) {
-	if !w.t.IsReading() {
-		return w.target.Write(b)
-	}
-
 	var (
 		n   int
 		err error
