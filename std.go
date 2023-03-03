@@ -137,62 +137,42 @@ func (c *CancelableStdin) Close() error {
 type FillableStdin struct {
 	sync.Mutex
 	stdin       io.ReadCloser
-	stdinBuffer io.ReadCloser
 	buf         []byte
-	bufErr      error
 }
 
 // NewFillableStdin gives you FillableStdin
-func NewFillableStdin(stdin io.ReadCloser) (io.ReadCloser, io.Writer) {
-	r, w := io.Pipe()
-	s := &FillableStdin{
-		stdinBuffer: r,
+func NewFillableStdin(stdin io.ReadCloser) io.ReadWriteCloser {
+	return &FillableStdin{
 		stdin:       stdin,
 	}
-	s.ioloop()
-	return s, w
 }
 
-func (s *FillableStdin) ioloop() {
-	go func() {
-		for {
-			bufR := make([]byte, 100)
-			var n int
-			n, s.bufErr = s.stdinBuffer.Read(bufR)
-			if s.bufErr != nil {
-				if s.bufErr == io.ErrClosedPipe {
-					break
-				}
-			}
-			s.Lock()
-			s.buf = append(s.buf, bufR[:n]...)
-			s.Unlock()
-		}
-	}()
+// Write adds data to the buffer that is prepended to the real stdin.
+func (s *FillableStdin) Write(p []byte) (n int, err error) {
+	s.Lock()
+	defer s.Unlock()
+	s.buf = append(s.buf, p...)
+	return len(p), nil
 }
 
 // Read will read from the local buffer and if no data, read from stdin
 func (s *FillableStdin) Read(p []byte) (n int, err error) {
 	s.Lock()
-	i := len(s.buf)
-	if len(p) < i {
-		i = len(p)
-	}
-	if i > 0 {
-		n := copy(p, s.buf)
-		s.buf = s.buf[:0]
-		cerr := s.bufErr
-		s.bufErr = nil
-		s.Unlock()
-		return n, cerr
+	if len(s.buf) > 0 {
+		// copy buffered data, slide back and reslice
+		n = copy(p, s.buf)
+		remaining := copy(s.buf, s.buf[n:])
+		s.buf = s.buf[:remaining]
 	}
 	s.Unlock()
-	n, err = s.stdin.Read(p)
-	return n, err
+
+	if n > 0 {
+		return n, nil
+	}
+
+	return s.stdin.Read(p)
 }
 
 func (s *FillableStdin) Close() error {
-	s.stdinBuffer.Close()
-	s.stdin.Close()
-	return nil
+	return s.stdin.Close()
 }

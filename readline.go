@@ -101,7 +101,8 @@ func (c *Config) Init() error {
 		c.Stdin = NewCancelableStdin(Stdin)
 	}
 
-	c.Stdin, c.StdinWriter = NewFillableStdin(c.Stdin)
+	fillableStdin := NewFillableStdin(c.Stdin)
+	c.Stdin, c.StdinWriter = fillableStdin, fillableStdin
 
 	if c.Stdout == nil {
 		c.Stdout = Stdout
