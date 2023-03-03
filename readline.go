@@ -98,7 +98,7 @@ func (c *Config) Init() error {
 	}
 	c.inited = true
 	if c.Stdin == nil {
-		c.Stdin = NewCancelableStdin(Stdin)
+		c.Stdin = Stdin
 	}
 
 	fillableStdin := NewFillableStdin(c.Stdin)
